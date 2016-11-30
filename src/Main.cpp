@@ -49,7 +49,7 @@ int main(int argc, char* argv[])
   int idleSeconds=3600;
   LOG_INFO << "pid = " << getpid();
   muduo::net::EventLoop loop;
-  muduo::net::InetAddress listenAddr(2007);
+  muduo::net::InetAddress listenAddr(43211);
   dsrv::MysqlConnInfo mysqlConnInfo("localhost","root","cita109109","demoDB");
   
   dsrv::DemoServer server(&loop, listenAddr,numThreads,isAntiPiracy,idleSeconds,mysqlConnInfo);
