@@ -5,10 +5,10 @@ int main(int argc, char* argv[])
 {
 
   //run as a daemon
-  //if(daemon(1,0)==-1)//DO NOT change the process's current working directory!aka daemon(0,0) is prohibited!
-  //{
-  // LOG_FATAL<<"daemon()";
-  // }
+  if(daemon(1,0)==-1)//DO NOT change the process's current working directory!aka daemon(0,0) is prohibited!
+  {
+    LOG_FATAL<<"daemon()";
+  }
   
   //logging bussiness in one thread!
   extern muduo::AsyncLogging* g_asyncLog;
