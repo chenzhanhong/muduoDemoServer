@@ -44,7 +44,7 @@ int main(int argc, char* argv[])
       LOG_FATAL<<"could not initialize mysql library";
     }
   //our anti-piracy strategy handles "one clientID with one connection" situation.It is UNDEFINED in other situations!
-  bool isAntiPiracy=true;
+  bool isAntiPiracy=false;
   int numThreads=3;
   int idleSeconds=3600;
   LOG_INFO << "pid = " << getpid();
