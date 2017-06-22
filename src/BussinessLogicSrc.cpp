@@ -1,7 +1,7 @@
 #include "DemoServer.h"
 
 using namespace dsrv;
-
+//data analysis service in 17-06-22
 inline bool isInteger(const std::string & s)//thread safe
 {
   if(s.empty() || ((!isdigit(s[0])) && (s[0] != '-') && (s[0] != '+'))) return false ;
