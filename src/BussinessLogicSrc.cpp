@@ -1,7 +1,7 @@
 #include "DemoServer.h"
 
 using namespace dsrv;
-//data analysis service in 17-06-22
+
 inline bool isInteger(const std::string & s)//thread safe
 {
   if(s.empty() || ((!isdigit(s[0])) && (s[0] != '-') && (s[0] != '+'))) return false ;
@@ -398,8 +398,8 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
       date=msgItems[4];
       totalMoney=msgItems[5];
       status=msgItems[6];
-      orderNumber=msgItems[7];
-      payType=msgItems[8];
+      payType=msgItems[7];
+      orderNumber=msgItems[8];
       currency=msgItems[9];
       memberNumber=msgItems[10];
       memberPoint=msgItems[11];
@@ -408,7 +408,7 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
       string sqlStatementConsumation;
       string sep="','";
       sqlStatementConsumation="insert into demoOrder(ClientID,Date_time,Total_money,Status,Order_number,Pay_type,Currency, Member_number,Member_point,Membername,Memberpoint_sum)values('"+clientIDStr+sep+date+sep+totalMoney+sep+status+sep
-	+payType+sep+orderNumber+sep+currency
+	+orderNumber+sep+payType+sep+currency
 	+sep+memberNumber+sep+memberPoint
 	+sep+memberName+sep+memberPointSum+"')";
       mysql_ping(&LocalMysqlConnection::instance());
@@ -478,6 +478,8 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
 		}
 	    }
 	}
+      string consumingMsgRet="7e|02|"+orderNumber+"|e7";
+      conn->send(consumingMsgRet); 
     }
   else if(command=="04")
     {
