@@ -412,6 +412,7 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
 	+sep+memberNumber+sep+memberPoint
 	+sep+memberName+sep+memberPointSum+"')";
       mysql_ping(&LocalMysqlConnection::instance());
+      mysql_query(&LocalMysqlConnection::instance(),"START TRANSACTION");
       if(!mysql_query(&LocalMysqlConnection::instance(),sqlStatementConsumation.c_str()))
 	{
 	  debugPrint("%s MYSQL INFO: inserted %lu rows\n",
@@ -430,6 +431,7 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
 #else
 	  conn->send(MSG_INVALID_RETURN);
 #endif
+	  mysql_query(&LocalMysqlConnection::instance(),"ROLLBACK");
 	  return;
 	}
 
@@ -449,6 +451,7 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
 #else
 	      conn->send(MSG_INVALID_RETURN);
 #endif
+	      mysql_query(&LocalMysqlConnection::instance(),"ROLLBACK");
 	      return;
 	    }
 	  else
@@ -474,12 +477,14 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
 #else
 		  conn->send(MSG_INVALID_RETURN);
 #endif
+		  mysql_query(&LocalMysqlConnection::instance(),"ROLLBACK");
 		  return;
 		}
 	    }
 	}
       string consumingMsgRet="7e|02|"+orderNumber+"|e7";
-      conn->send(consumingMsgRet); 
+      conn->send(consumingMsgRet);
+      mysql_query(&LocalMysqlConnection::instance(),"COMMIT");
     }
   else if(command=="04")
     {
