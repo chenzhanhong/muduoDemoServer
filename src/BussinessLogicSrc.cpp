@@ -1,3 +1,4 @@
+
 #include "DemoServer.h"
 
 using namespace dsrv;
@@ -418,6 +419,7 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
 	    {
 	      conn->send("mysql server has gone away and reconnecting...");
 	      mysql_ping(&LocalMysqlConnection::instance());
+	      mysql_query(&LocalMysqlConnection::instance(),"START TRANSACTION");//restart the mysql_query after reconnecting
 	    }
 	  else
 	    {
