@@ -49,7 +49,6 @@ namespace boost
 #define MSG_CONSUMING_ITEMS_NUM_MIN 11
 #define MSG_INVALID_RETURN "7e|04|000015|e7"
 #define MSG_ITEMS_NUM_MIN  5
-#define MSG_LENGTH_MIN 12
 #define MSG_PENDING_MAX 65536
 
 #define DEBUG_MODE  //undef DEBUG_MODE for making debugPrint an empty statement
@@ -141,6 +140,7 @@ namespace dsrv
     void onStringMessage(const TcpConnectionPtr& conn,const string& msg, const Timestamp& time);
     void processStringMessage(const TcpConnectionPtr& conn,const vector<string>& msgItems, const Timestamp& time,const string& oriMsg);
     string getInfoPrefix(const TcpConnectionPtr& conn);
+    void forceCloseLog(const TcpConnectionPtr& conn,const string& logInfo,string msg);
     bool mysqlQueryWrap(MYSQL *mysql,const string& sqlStatement,const TcpConnectionPtr& conn,bool isRollback);
     void invalidInfoWarn(const TcpConnectionPtr& conn,const string& info);
     string setupMessage(const string&strMiddle,string cmd);

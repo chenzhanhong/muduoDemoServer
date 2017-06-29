@@ -21,8 +21,8 @@ MysqlRes::MysqlRes(MYSQL* mysqlConn)
     {
       string info="["+getLocalTimeString()+string("]")+" MYSQL ERROR: can not store results:"+
 	string(mysql_error(mysqlConn));
-	  debugPrint("%s\n",info.c_str());
-	  LOG_ERROR<<info;
+      debugPrint("%s\n",info.c_str());
+      LOG_ERROR<<info;
     }
 }
 MysqlRes::~MysqlRes()
@@ -50,16 +50,16 @@ bool MysqlRes::isValid()
 }
 
 void DemoServer::invalidInfoWarn(const TcpConnectionPtr& conn,const string& info)
- {
-      debugPrint("%s\n",info.c_str());
-      LOG_WARN<<info;
-      //debugInformClient(info,conn);
+{
+  debugPrint("%s\n",info.c_str());
+  LOG_WARN<<info;
+  //debugInformClient(info,conn);
 #ifdef DEBUG_INVALID_MSG_INFORM
-      conn->send(info);
+  conn->send(setupMessage(info,"04"));
 #else
-      conn->send(MSG_INVALID_RETURN);
+  conn->send(MSG_INVALID_RETURN);
 #endif
- }
+}
 
 string DemoServer::setupMessage(const string&strMiddle,string cmd)
 {
@@ -99,7 +99,7 @@ bool DemoServer::mysqlQueryWrap(MYSQL *mysql,const string& sqlStatement,const Tc
 	  LOG_ERROR<<info;
 	  
 #ifdef DEBUG_INVALID_MSG_INFORM
-	  conn->send(info);
+	  conn->send(setupMessage(info,"04"));
 #else
 	  conn->send(MSG_INVALID_RETURN);
 #endif
@@ -122,6 +122,19 @@ string DemoServer::getInfoPrefix(const TcpConnectionPtr& conn)
   return infoPrefix;
 }
 
+void DemoServer::forceCloseLog(const TcpConnectionPtr& conn,const string& logInfo,string msg)
+{
+  debugPrint("[%s,%s] WARN: %s:%s\n",
+	     getLocalTimeString().c_str(),
+	     conn->peerAddress().toIpPort().c_str(),logInfo.c_str(),
+	     msg.c_str());
+  LOG_WARN<<"["<<getLocalTimeString()<<","
+	  <<conn->peerAddress().toIpPort()
+	  <<"] "<<logInfo;
+  //buf->retrieve(1);
+  conn->forceClose();
+}
+
 void DemoServer::onMessage(const TcpConnectionPtr& conn, Buffer* buf, Timestamp time)
 {
   //It is essential to process the message buffer on user application layer because TCP is based on borderless byte stream.
@@ -142,8 +155,9 @@ void DemoServer::onMessage(const TcpConnectionPtr& conn, Buffer* buf, Timestamp 
     }  
 
   //handles readable bytes less than 3 
-  int bytesNum=buf->readableBytes();
+  //int bytesNum=buf->readableBytes();
   string header;
+  /*
   switch(bytesNum)
     {
     case 1:
@@ -152,15 +166,7 @@ void DemoServer::onMessage(const TcpConnectionPtr& conn, Buffer* buf, Timestamp 
 	if(header!="7")
 	  {
 	    
-	    debugPrint("[%s,%s] WARN: NOT protocally correct message:%s\n",
-		       getLocalTimeString().c_str(),
-		       conn->peerAddress().toIpPort().c_str(),
-		       header.c_str());
-	    LOG_WARN<<"["<<getLocalTimeString()<<","
-		    <<conn->peerAddress().toIpPort()
-		    <<"] NOT protocally correct message";
-	    //buf->retrieve(1);
-	    conn->forceClose();
+	    forceCloseLog(conn,"NOT protocally correct message",header);
 	    return;
 	  }
 	return;
@@ -171,14 +177,7 @@ void DemoServer::onMessage(const TcpConnectionPtr& conn, Buffer* buf, Timestamp 
 	if(header!="7e")
 	  {
 	    
-	    debugPrint("[%s,%s] WARN: NOT protocally correct message:%s\n",
-		       getLocalTimeString().c_str(),
-		       conn->peerAddress().toIpPort().c_str(),
-		       header.c_str());
-	    LOG_WARN<<"["<<getLocalTimeString()<<","
-		    <<conn->peerAddress().toIpPort()
-		    <<"] NOT protocally correct message";
-	    //buf->retrieve(2);
+	    forceCloseLog(conn,"NOT protocally correct message",header);
 	    conn->forceClose();
 	    return;
 	  }
@@ -190,16 +189,20 @@ void DemoServer::onMessage(const TcpConnectionPtr& conn, Buffer* buf, Timestamp 
       }
 	
     }
+  */
   
   //handles with readableBytes >=3
   string totalMsg(buf->peek(),buf->readableBytes());
   string str;
   bool isHeaderFound=false;
-  size_t posPeek=0;
-  size_t posCurHead=0;
-  size_t posCurEnd=0;
-  for(size_t i=0;i<totalMsg.size();++i)
+  bool isLenFound=false;
+  string::size_type sepLen1,sepLen2;
+  size_t len;
+  size_t i=0;
+  //for(size_t i=0;i<totalMsg.size();++i)
+  while(i<totalMsg.size())
     {
+      /*
       if(!isHeaderFound)
 	{
 	  posCurHead=totalMsg.find("7e|",i);
@@ -288,46 +291,107 @@ void DemoServer::onMessage(const TcpConnectionPtr& conn, Buffer* buf, Timestamp 
 		}
 	    }
 	}
-      else
+      */
+      if(!isHeaderFound)
 	{
-	  posCurEnd=totalMsg.find("|e7",i);
-	  if(posCurEnd==string::npos)
+	  if(i==totalMsg.size()-1)
 	    {
-	      
-	      if(buf->readableBytes()>MSG_PENDING_MAX)
+	      if(totalMsg.substr(i,1)!="7")
 		{
-		  debugPrint("[%s,%s] WARN: pending buffer may overflow\n",
-			     getLocalTimeString().c_str(),
-			     conn->peerAddress().toIpPort().c_str());
-		  LOG_WARN<<"["<<getLocalTimeString()<<","
-			  <<conn->peerAddress().toIpPort()
-			  <<"] pending buffer may overflow";
-		  conn->forceClose();
+		  forceCloseLog(conn,"NOT protocally correct message",totalMsg.substr(i,1));
 		  return;
 		}
-	      return;
+	      break;
+	    }
+	  else if(i==totalMsg.size()-2)
+	    {
+	      if(totalMsg.substr(i,2)!="7e")
+		{
+		  forceCloseLog(conn,"NOT protocally correct message",totalMsg.substr(i,2));
+		  return;
+		}
+	      break;
+	    }
+	  else if(i==totalMsg.size()-3)
+	    {
+	      if(totalMsg.substr(i,3)!="7e|")
+		{
+		  forceCloseLog(conn,"NOT protocally correct message",totalMsg.substr(i,3));
+		  return;
+		}
+	      break;
 	    }
 	  else
 	    {
-	      isHeaderFound=false;
-	      i=posCurEnd+2;
-	      str=string(buf->peek(),posCurEnd-posCurHead+3);
-	      buf->retrieve(posCurEnd-posCurHead+3);
-	      posPeek=posCurEnd+3;
-	      onStringMessage(conn,str,time);
+	      if(totalMsg.substr(i,3)!="7e|")
+		{
+		  forceCloseLog(conn,"NOT protocally correct message",totalMsg.substr(i));
+		  return;
+		}
+	      else
+		{
+		  isHeaderFound=true;
+		  continue;
+		}
 	    }
 	}
-    }
+      else
+	{
+	  //head Found
+	  if(isLenFound)
+	    {
+	      //len got
+	      if(buf->readableBytes()>=len)
+		{
+		  isHeaderFound=false;
+		  isLenFound=false;
+		  str=string(buf->peek(),len);
+		  buf->retrieve(len);
+		  i+=len;
+		  if(str.size()<3||str.substr(str.size()-3,3)!="|e7")
+		    {
+		      forceCloseLog(conn,"NOT protocally correct message",str);
+		      return;
+		    }
+		  onStringMessage(conn,str,time);
+		  continue;
+		}
+	      else
+		{
+		  break;
+		}
+	    }
+	  else
+	    {
+	     
+	      sepLen1=totalMsg.find("|",i+3);
+	      if(sepLen1!=string::npos)
+		{
+	
+		  sepLen2=totalMsg.find("|",sepLen1+1);
+		  if(sepLen2!=string::npos)
+		    {
+		      len=static_cast<size_t>(stoi(totalMsg.substr(sepLen1+1,sepLen2-sepLen1-1)));
+		      isLenFound=true;
+		      continue;
+		    }
+		  else
+		    {
+		      break;
+		    }
+		}
+	      else
+		{
+		  break;
+		}
+	    }
+	  
+	}//else head found
+    }//while end
 
   if(buf->readableBytes()>MSG_PENDING_MAX)
     {
-      debugPrint("[%s,%s] WARN: pending buffer may overflow\n",
-		 getLocalTimeString().c_str(),
-		 conn->peerAddress().toIpPort().c_str());
-      LOG_WARN<<"["<<getLocalTimeString()<<","
-	      <<conn->peerAddress().toIpPort()
-	      <<"] pending buffer may overflow";
-      conn->forceClose();
+      forceCloseLog(conn,"Pending buffer may overflow","Too long to show");
       return;
     }
   return;
@@ -341,18 +405,7 @@ void DemoServer::onStringMessage(const TcpConnectionPtr& conn,
 	     getLocalTimeString().c_str(),
 	     conn->peerAddress().toIpPort().c_str(),
 	     msg.c_str());
-  
-  if(msg.size()<MSG_LENGTH_MIN)
-    {
-      string info="["+getLocalTimeString()+","+
-	conn->peerAddress().toIpPort()+
-	"] WARN: total number of bytes("+
-	to_string(msg.size())+
-	") in a message should not less than "+
-	to_string(MSG_LENGTH_MIN);
-      invalidInfoWarn(conn,info);
-      return;
-    }
+ 
   
   vector<string>msgItems;
   boost::split(msgItems,msg,boost::is_any_of("|"));
@@ -368,7 +421,6 @@ void DemoServer::onStringMessage(const TcpConnectionPtr& conn,
       return;
     }
 
-  //msgItems.size()>=MSG_ITEMS_NUM_MIN here and continue.
   string command=msgItems[1];
   if(command!="01"&&command!="02"&&command!="04"&&command!="05"&&command!="07"&&command!="08")
     {
@@ -379,25 +431,22 @@ void DemoServer::onStringMessage(const TcpConnectionPtr& conn,
       return;
     }
 
-  string validItemsLen=msgItems[2];
-  if(!isInteger(validItemsLen)||
-     atoi(validItemsLen.c_str())!=static_cast<int>(msgItems.size())-4)
-    {
-      string info="["+getLocalTimeString()+","+
-	conn->peerAddress().toIpPort()+
-	"] WARN: data length("+validItemsLen+
-	") do not equal to the actual("+
-	to_string(msgItems.size()-4)+")";
-      invalidInfoWarn(conn,info);
-      return;
-    }
-
   string clientIDStr=msgItems[3];
   if(!isInteger(clientIDStr))
     {
       string info="["+getLocalTimeString()+","+
 	conn->peerAddress().toIpPort()+
 	"] WARN: clientID("+clientIDStr+") should be integer";
+      invalidInfoWarn(conn,info);
+      return;
+    }
+
+  int clientIDLen=clientIDStr.size();
+  if(clientIDLen<COMPANY_CODE_PREFIX_LEN+1)
+    {
+      string info="["+getLocalTimeString()+","+
+	conn->peerAddress().toIpPort()+
+	"] WARN: clientID("+clientIDStr+") should be no less than "+to_string(COMPANY_CODE_PREFIX_LEN+1);
       invalidInfoWarn(conn,info);
       return;
     }
@@ -422,17 +471,9 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
   string clientIDStr=msgItems[3];
   string companyIDStr=clientIDStr.substr(0,COMPANY_CODE_PREFIX_LEN);
   string sep="','";
-  int itemsLen=atoi(msgItems[2].c_str());
   if(command=="01")
     {
-      //length check
-      if(itemsLen!=1)
-	{
-	  string info=getInfoPrefix(conn)+" WARN: data length("+
-	    msgItems[2]+") should be 1 (heart beat message:7e|01|1|clientID|e7)";
-	  invalidInfoWarn(conn,info);
-	  return;
-	}
+      
       //heart beat message
       debugPrint("[%s,%s] INFO: heartbeat package received\n",
 		 getLocalTimeString().c_str(),
@@ -538,15 +579,7 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
     }
   else if(command=="04")
     {
-      //length check
-      if(itemsLen!=1)
-	{
-	  string info=getInfoPrefix(conn)+" WARN: data length("+
-	    msgItems[2]+
-	    ") should be 1 (adver (re)transmission request message:7e|04|1|clientID|e7)";
-	  invalidInfoWarn(conn,info);
-	  return;
-	}
+      
       //adver (re)transmission request message
       debugPrint("[%s,%s] INFO: adver (re)transmission request package received\n",
 		 getLocalTimeString().c_str(),
@@ -588,15 +621,7 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
     }
   else if(command=="05")
     {
-      //length check
-      if(itemsLen!=2)
-	{
-	  string info=getInfoPrefix(conn)+" WARN: data length("+
-	    msgItems[2]+
-	    ") should be 2 (adver confirmation return message:7e|05|2|clientID|adverID|e7)";
-	  invalidInfoWarn(conn,info);
-	  return;
-	}
+      
       //adver confirmation return message
       debugPrint("[%s,%s] INFO: adver confirmation return package received\n",
 		 getLocalTimeString().c_str(),
@@ -645,14 +670,6 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
     }
   else if(command=="07")
     {
-      if(itemsLen!=1)
-	{
-	  string info=getInfoPrefix(conn)+" WARN: data length("+
-	    msgItems[2]+
-	    ") should be 1 (loading consuming items message:7e|07|1|clientID|e7)";
-	  invalidInfoWarn(conn,info);
-	  return;
-	}
 
       if(!processDAClientQuery(conn,sep,companyIDStr,clientIDStr))return;
 
@@ -660,14 +677,7 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
 
   else if(command=="08")
     {
-      if(itemsLen!=2)
-	{
-	  string info=getInfoPrefix(conn)+" WARN: data length("+
-	    msgItems[2]+
-	    ") should be 2(loading consuming items message:7e|08|2|clientID|1or0|e7)";
-	  invalidInfoWarn(conn,info);
-	  return;
-	}
+  
       string isSuccess=msgItems[4];
       if(isSuccess=="0")
 	{
@@ -676,7 +686,7 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
 	}
       else
 	{
-	   //delete from demoCache
+	  //delete from demoCache
 	  if(mysqlQueryWrap(&LocalMysqlConnection::instance(),"START TRANSACTION",conn,false)) return;
 	  string sqlStatementDeleteCache="DELETE FROM demoCache WHERE DAClientID="+clientIDStr+" AND Todelete=1";
 	  if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementDeleteCache,conn,true))return;
@@ -691,98 +701,98 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
 bool DemoServer::processDAClientQuery(const TcpConnectionPtr& conn,const string& sep,const string& companyIDStr,const string& clientIDStr)
 {
   
-      if(mysqlQueryWrap(&LocalMysqlConnection::instance(),"START TRANSACTION",conn,false)) return false;
+  if(mysqlQueryWrap(&LocalMysqlConnection::instance(),"START TRANSACTION",conn,false)) return false;
       
-      string sqlStatementDAClients="SELECT Isnew FROM demoDAClients WHERE DAClientID="+clientIDStr;
-      if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementDAClients,conn,true))return false;
-      MysqlRes resultDAClients(&LocalMysqlConnection::instance());
-      if(resultDAClients.isValid())
+  string sqlStatementDAClients="SELECT Isnew FROM demoDAClients WHERE DAClientID="+clientIDStr;
+  if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementDAClients,conn,true))return false;
+  MysqlRes resultDAClients(&LocalMysqlConnection::instance());
+  if(resultDAClients.isValid())
+    {
+      MYSQL_ROW row=resultDAClients.fetchRow();
+      if(row)
 	{
-	  MYSQL_ROW row=resultDAClients.fetchRow();
-	  if(row)
+	  int isNew=stoi(string(row[0]));
+	  if(isNew==1)
 	    {
-	      int isNew=stoi(string(row[0]));
-	      if(isNew==1)
+	      //a new DAClient
+	      string sqlStatementOrder="SELECT ID,ClientID,Date_time,Total_money,Status,Order_number,Pay_type,Currency, Member_number,Member_point,Membername,Memberpoint_sum FROM demoOrder WHERE LEFT(ClientID,"+to_string(COMPANY_CODE_PREFIX_LEN)+")="+companyIDStr;
+	      string ID,ClientID,Date_time,Total_money,Status,Order_number,Pay_type,Currency, Member_number,Member_point,Membername,Memberpoint_sum;
+	      if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementOrder,conn,true))return false;
+	      MysqlRes resultOrder(&LocalMysqlConnection::instance());
+	      if(resultOrder.isValid())
 		{
-		  //a new DAClient
-		  string sqlStatementOrder="SELECT ID,ClientID,Date_time,Total_money,Status,Order_number,Pay_type,Currency, Member_number,Member_point,Membername,Memberpoint_sum FROM demoOrder WHERE LEFT(ClientID,"+to_string(COMPANY_CODE_PREFIX_LEN)+")="+companyIDStr;
-		  string ID,ClientID,Date_time,Total_money,Status,Order_number,Pay_type,Currency, Member_number,Member_point,Membername,Memberpoint_sum;
-		  if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementOrder,conn,true))return false;
-		  MysqlRes resultOrder(&LocalMysqlConnection::instance());
-		  if(resultOrder.isValid())
-		    {
 		      
-		      MYSQL_ROW row;
-		      while((row=resultOrder.fetchRow()))
-			{
-			  ID=string(row[0]);
-			  ClientID=string(row[1]);
-			  Date_time=string(row[2]);
-			  Total_money=string(row[3]);
-			  Status=string(row[4]);
-			  Order_number=string(row[5]);
-			  Pay_type=string(row[6]);
-			  Currency=string(row[7]);
-			  Member_number=string(row[8]);
-			  Member_point=string(row[9]);
-			  Membername=string(row[10]);
-			  Memberpoint_sum=string(row[11]);
-			  string pre=ClientID+'|'+Date_time+'|'+Total_money+'|'+Status+'|'+Pay_type+'|'+Order_number+'|'+Currency+'|'+Member_number+'|'+Member_point+'|'+Membername+'|'+Memberpoint_sum;
-			  string sqlStatementOrderitem="SELECT Name,Number FROM demoOrderitem WHERE OrderID="+ID;
-			  if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementOrderitem,conn,true))return false;
-			  MysqlRes resultOrderitem(&LocalMysqlConnection::instance());
-			  if(resultOrderitem.isValid())
-			    {
-			      MYSQL_ROW row2;
-			      bool notEmpty=false;
-			      while((row2=resultOrderitem.fetchRow()))
-				{
-				  notEmpty=true;
-				  pre+='|';
-				  pre+=string(row2[0]);
-				  pre+=',';
-				  pre+=string(row2[1]);
-				}
-			      if(notEmpty)
-				{
-				  //restore the consuming message
-				  string Command=setupMessage(pre,"02");
-				  string sqlStatementInsertCache="INSERT INTO demoCache(DAClientID,Command,ToDelete) VALUES";
-				  string increment="('"+clientIDStr+sep+Command+sep+string("0")+"')";
-				  sqlStatementInsertCache+=increment;
-				  if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementInsertCache,conn,true))return false;
-				    
-				}
-			    }
-						   
-			}
-		     
-		    }
-		   string sqlStatementUpdateDAClients="UPDATE demoDAClients SET Isnew=0 WHERE DAClientID="+clientIDStr;
-		   if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementUpdateDAClients,conn,true))return false;
-		}
-	      //ClientID is not new from below;
-              string sqlStatementSelectCache="SELECT Command FROM demoCache WHERE DAClientID="+clientIDStr;
-	      if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementSelectCache,conn,true))return false;
-	      MysqlRes resultSelectCache(&LocalMysqlConnection::instance());
-	      if(resultSelectCache.isValid())
-		{
-		  MYSQL_ROW row3;
-		  while((row3=resultSelectCache.fetchRow()))
+		  MYSQL_ROW row;
+		  while((row=resultOrder.fetchRow()))
 		    {
-		      conn->send(setupMessage(string(row3[0]),"07"));
+		      ID=string(row[0]);
+		      ClientID=string(row[1]);
+		      Date_time=string(row[2]);
+		      Total_money=string(row[3]);
+		      Status=string(row[4]);
+		      Order_number=string(row[5]);
+		      Pay_type=string(row[6]);
+		      Currency=string(row[7]);
+		      Member_number=string(row[8]);
+		      Member_point=string(row[9]);
+		      Membername=string(row[10]);
+		      Memberpoint_sum=string(row[11]);
+		      string pre=ClientID+'|'+Date_time+'|'+Total_money+'|'+Status+'|'+Pay_type+'|'+Order_number+'|'+Currency+'|'+Member_number+'|'+Member_point+'|'+Membername+'|'+Memberpoint_sum;
+		      string sqlStatementOrderitem="SELECT Name,Number FROM demoOrderitem WHERE OrderID="+ID;
+		      if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementOrderitem,conn,true))return false;
+		      MysqlRes resultOrderitem(&LocalMysqlConnection::instance());
+		      if(resultOrderitem.isValid())
+			{
+			  MYSQL_ROW row2;
+			  bool notEmpty=false;
+			  while((row2=resultOrderitem.fetchRow()))
+			    {
+			      notEmpty=true;
+			      pre+='|';
+			      pre+=string(row2[0]);
+			      pre+=',';
+			      pre+=string(row2[1]);
+			    }
+			  if(notEmpty)
+			    {
+			      //restore the consuming message
+			      string Command=setupMessage(pre,"02");
+			      string sqlStatementInsertCache="INSERT INTO demoCache(DAClientID,Command,ToDelete) VALUES";
+			      string increment="('"+clientIDStr+sep+Command+sep+string("0")+"')";
+			      sqlStatementInsertCache+=increment;
+			      if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementInsertCache,conn,true))return false;
+				    
+			    }
+			}
+						   
 		    }
+		     
 		}
-	      //set toDelete
-	      string sqlStatementUpdateCache="UPDATE demoCache SET ToDelete=1 WHERE DAClientID="+clientIDStr;
-	      if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementUpdateCache,conn,true))return false;
+	      string sqlStatementUpdateDAClients="UPDATE demoDAClients SET Isnew=0 WHERE DAClientID="+clientIDStr;
+	      if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementUpdateDAClients,conn,true))return false;
 	    }
-
-	  //ClientID is not in table demoDAClients from below;
+	  //ClientID is not new from below;
+	  string sqlStatementSelectCache="SELECT Command FROM demoCache WHERE DAClientID="+clientIDStr;
+	  if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementSelectCache,conn,true))return false;
+	  MysqlRes resultSelectCache(&LocalMysqlConnection::instance());
+	  if(resultSelectCache.isValid())
+	    {
+	      MYSQL_ROW row3;
+	      while((row3=resultSelectCache.fetchRow()))
+		{
+		  conn->send(setupMessage(string(row3[0]),"07"));
+		}
+	    }
+	  //set toDelete
+	  string sqlStatementUpdateCache="UPDATE demoCache SET ToDelete=1 WHERE DAClientID="+clientIDStr;
+	  if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementUpdateCache,conn,true))return false;
 	}
-      // sending a message to client when done
-      conn->send(setupMessage("1","08"));
+
+      //ClientID is not in table demoDAClients from below;
+    }
+  // sending a message to client when done
+  conn->send(setupMessage("1","08"));
       
-      if(mysqlQueryWrap(&LocalMysqlConnection::instance(),"COMMIT",conn,false))return false;
-      return true;
+  if(mysqlQueryWrap(&LocalMysqlConnection::instance(),"COMMIT",conn,false))return false;
+  return true;
 }
