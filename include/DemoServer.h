@@ -44,13 +44,15 @@ namespace boost
 }
 #endif
 
+#define MAX_MSG_LEN_BIT_NUM 6
+#define COMPANY_CODE_PREFIX_LEN 5
 #define MSG_CONSUMING_ITEMS_NUM_MIN 11
-#define MSG_INVALID_RETURN "7e|04|e7"
+#define MSG_INVALID_RETURN "7e|04|000015|e7"
 #define MSG_ITEMS_NUM_MIN  5
 #define MSG_LENGTH_MIN 12
 #define MSG_PENDING_MAX 65536
 
-//#define DEBUG_MODE  //undef DEBUG_MODE for making debugPrint an empty statement
+#define DEBUG_MODE  //undef DEBUG_MODE for making debugPrint an empty statement
 #define DEBUG_INVALID_MSG_INFORM //informing the client in concrete explanation when receiving an invalid but protocally correct message
 
 
@@ -137,7 +139,12 @@ namespace dsrv
     void onConnection(const TcpConnectionPtr& conn);
     void onMessage(const TcpConnectionPtr& conn,Buffer* buf,Timestamp time);
     void onStringMessage(const TcpConnectionPtr& conn,const string& msg, const Timestamp& time);
-    void processStringMessage(const TcpConnectionPtr& conn,const vector<string>& msgItems, const Timestamp& time);
+    void processStringMessage(const TcpConnectionPtr& conn,const vector<string>& msgItems, const Timestamp& time,const string& oriMsg);
+    string getInfoPrefix(const TcpConnectionPtr& conn);
+    bool mysqlQueryWrap(MYSQL *mysql,const string& sqlStatement,const TcpConnectionPtr& conn,bool isRollback);
+    void invalidInfoWarn(const TcpConnectionPtr& conn,const string& info);
+    string setupMessage(const string&strMiddle,string cmd);
+    bool processDAClientQuery(const TcpConnectionPtr& conn,const string& sep,const string& companyIDStr,const string& clientIDStr);
     void onTimer();
     void threadInit(EventLoop* loop);
     void addToUnauthorizedConns(const WeakTcpConnectionPtr& weakConn);//thread safe
@@ -157,7 +164,19 @@ namespace dsrv
   
   };
 
-  
+  class MysqlRes
+  {
+  public:
+    explicit MysqlRes(MYSQL * mysqlConn);
+    ~MysqlRes();
+    MysqlRes(const MysqlRes&)=delete;
+    MysqlRes& operator=(const MysqlRes&)=delete;
+    int numFields();
+    MYSQL_ROW fetchRow();
+    bool isValid();
+  private:
+    MYSQL_RES * result_;
+  };
 
 
 

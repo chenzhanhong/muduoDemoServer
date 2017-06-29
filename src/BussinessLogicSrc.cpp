@@ -1,4 +1,5 @@
 
+
 #include "DemoServer.h"
 
 using namespace dsrv;
@@ -13,7 +14,108 @@ inline bool isInteger(const std::string & s)//thread safe
   return (*p == 0) ;
 }
 
-inline string getInfoPrefix(const TcpConnectionPtr& conn)
+MysqlRes::MysqlRes(MYSQL* mysqlConn)
+{
+  result_=mysql_store_result(mysqlConn);
+  if(result_==NULL)
+    {
+      string info="["+getLocalTimeString()+string("]")+" MYSQL ERROR: can not store results:"+
+	string(mysql_error(mysqlConn));
+	  debugPrint("%s\n",info.c_str());
+	  LOG_ERROR<<info;
+    }
+}
+MysqlRes::~MysqlRes()
+{
+  if(result_)
+    {
+      mysql_free_result(result_);
+    }
+  result_=NULL;
+}
+
+int MysqlRes::numFields()
+{
+  return mysql_num_fields(result_);
+}
+
+MYSQL_ROW MysqlRes::fetchRow()
+{
+  return mysql_fetch_row(result_);
+}
+
+bool MysqlRes::isValid()
+{
+  return (result_!=NULL);
+}
+
+void DemoServer::invalidInfoWarn(const TcpConnectionPtr& conn,const string& info)
+ {
+      debugPrint("%s\n",info.c_str());
+      LOG_WARN<<info;
+      //debugInformClient(info,conn);
+#ifdef DEBUG_INVALID_MSG_INFORM
+      conn->send(info);
+#else
+      conn->send(MSG_INVALID_RETURN);
+#endif
+ }
+
+string DemoServer::setupMessage(const string&strMiddle,string cmd)
+{
+  string resMsg;
+  string len=to_string(10+MAX_MSG_LEN_BIT_NUM+strMiddle.size());
+  if(static_cast<int>(len.size())>MAX_MSG_LEN_BIT_NUM||static_cast<int>(cmd.size()!=2))
+    {
+      LOG_ERROR<<"invalid input for setupMessage()";
+      return string(MSG_INVALID_RETURN);
+    }
+  string lenPadded=string(MAX_MSG_LEN_BIT_NUM-len.size(),'0')+len;
+  resMsg="7e|"+cmd+"|"+lenPadded+"|"+strMiddle+"|e7";
+  return resMsg;
+}
+
+bool DemoServer::mysqlQueryWrap(MYSQL *mysql,const string& sqlStatement,const TcpConnectionPtr& conn,bool isRollback)
+{
+  if(!mysql_query(mysql,sqlStatement.c_str()))
+    {
+      debugPrint("%s MYSQL INFO: affected %d rows\n",
+		 getInfoPrefix(conn).c_str(),
+		 static_cast<int>(mysql_affected_rows(mysql)));
+    }
+  else
+    {
+      if(mysql_errno(mysql)==2006)
+	{
+	  //conn->send("mysql server has gone away and reconnecting...");
+	  mysql_ping(mysql);
+	  mysql_query(mysql,sqlStatement.c_str());//restart the mysql_query after reconnecting
+	}
+      else
+	{
+	  string info=getInfoPrefix(conn)+" MYSQL ERROR:"
+	    +string(mysql_error(mysql));
+	  debugPrint("%s\n",info.c_str());
+	  LOG_ERROR<<info;
+	  
+#ifdef DEBUG_INVALID_MSG_INFORM
+	  conn->send(info);
+#else
+	  conn->send(MSG_INVALID_RETURN);
+#endif
+	  if(isRollback)
+	    {
+	      mysql_query(mysql,"ROLLBACK");
+	    }
+	     
+	  return true;
+		    
+	}
+    }
+  return false;
+}
+
+string DemoServer::getInfoPrefix(const TcpConnectionPtr& conn)
 {
   string infoPrefix="["+getLocalTimeString()+","
     +conn->peerAddress().toIpPort()+"]";
@@ -248,14 +350,7 @@ void DemoServer::onStringMessage(const TcpConnectionPtr& conn,
 	to_string(msg.size())+
 	") in a message should not less than "+
 	to_string(MSG_LENGTH_MIN);
-      debugPrint("%s\n",info.c_str());
-      LOG_WARN<<info;
-      //debugInformClient(info,conn);
-#ifdef DEBUG_INVALID_MSG_INFORM
-      conn->send(info);
-#else
-      conn->send(MSG_INVALID_RETURN);
-#endif
+      invalidInfoWarn(conn,info);
       return;
     }
   
@@ -269,32 +364,18 @@ void DemoServer::onStringMessage(const TcpConnectionPtr& conn,
 	"] WARN: total number of items("+to_string(msgItems.size())+
 	") in a message should not less than "+
 	to_string(MSG_ITEMS_NUM_MIN);
-      debugPrint("%s\n",info.c_str());
-      LOG_WARN<<info;
-      //debugInformClient(info,conn);
-#ifdef DEBUG_INVALID_MSG_INFORM
-      conn->send(info);
-#else
-      conn->send(MSG_INVALID_RETURN);
-#endif
+      invalidInfoWarn(conn,info);
       return;
     }
 
   //msgItems.size()>=MSG_ITEMS_NUM_MIN here and continue.
   string command=msgItems[1];
-  if(command!="01"&&command!="02"&&command!="04"&&command!="05"&&command!="06")
+  if(command!="01"&&command!="02"&&command!="04"&&command!="05"&&command!="07"&&command!="08")
     {
       string info="["+getLocalTimeString()+","+
 	conn->peerAddress().toIpPort()+
 	"] WARN: can not resolve command("+command+")";
-      debugPrint("%s\n",info.c_str());
-      LOG_WARN<<info;
-      //debugInformClient(info,conn);
-#ifdef DEBUG_INVALID_MSG_INFORM
-      conn->send(info);
-#else
-      conn->send(MSG_INVALID_RETURN);
-#endif
+      invalidInfoWarn(conn,info);
       return;
     }
 
@@ -307,14 +388,7 @@ void DemoServer::onStringMessage(const TcpConnectionPtr& conn,
 	"] WARN: data length("+validItemsLen+
 	") do not equal to the actual("+
 	to_string(msgItems.size()-4)+")";
-      debugPrint("%s\n",info.c_str());
-      LOG_WARN<<info;
-      //debugInformClient(info,conn);
-#ifdef DEBUG_INVALID_MSG_INFORM
-      conn->send(info);
-#else
-      conn->send(MSG_INVALID_RETURN);
-#endif
+      invalidInfoWarn(conn,info);
       return;
     }
 
@@ -324,14 +398,7 @@ void DemoServer::onStringMessage(const TcpConnectionPtr& conn,
       string info="["+getLocalTimeString()+","+
 	conn->peerAddress().toIpPort()+
 	"] WARN: clientID("+clientIDStr+") should be integer";
-      debugPrint("%s\n",info.c_str());
-      LOG_WARN<<info;
-      //debugInformClient(info,conn);
-#ifdef DEBUG_INVALID_MSG_INFORM
-      conn->send(info);
-#else
-      conn->send(MSG_INVALID_RETURN);
-#endif
+      invalidInfoWarn(conn,info);
       return;
     }
 
@@ -341,17 +408,20 @@ void DemoServer::onStringMessage(const TcpConnectionPtr& conn,
       //process message here
       debugPrint("%s INFO processstringmessage(),with string:%s\n",
 		 getInfoPrefix(conn).c_str(),msg.c_str());
-      processStringMessage(conn,msgItems,time);
+      processStringMessage(conn,msgItems,time,msg);
     }
   
   
 }//end of onStringmessage()
 
-void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<string>& msgItems, const Timestamp& time)
+void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<string>& msgItems,
+				      const Timestamp& time,const string& oriMsg)
 {
   
   string command=msgItems[1];
   string clientIDStr=msgItems[3];
+  string companyIDStr=clientIDStr.substr(0,COMPANY_CODE_PREFIX_LEN);
+  string sep="','";
   int itemsLen=atoi(msgItems[2].c_str());
   if(command=="01")
     {
@@ -360,14 +430,7 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
 	{
 	  string info=getInfoPrefix(conn)+" WARN: data length("+
 	    msgItems[2]+") should be 1 (heart beat message:7e|01|1|clientID|e7)";
-	  debugPrint("%s\n",info.c_str());
-	  LOG_WARN<<info;
-	  //debugInformClient(info,conn);
-#ifdef DEBUG_INVALID_MSG_INFORM
-	  conn->send(info);
-#else
-	  conn->send(MSG_INVALID_RETURN);
-#endif
+	  invalidInfoWarn(conn,info);
 	  return;
 	}
       //heart beat message
@@ -381,12 +444,7 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
       if(atoi(msgItems[2].c_str())<MSG_CONSUMING_ITEMS_NUM_MIN)
 	{
 	  string info=getInfoPrefix(conn)+" WARN: consuming items loss";
-	  debugPrint("%s\n",info.c_str());
-#ifdef DEBUG_INVALID_MSG_INFORM
-	  conn->send(info);
-#else
-	  conn->send(MSG_INVALID_RETURN);
-#endif
+	  invalidInfoWarn(conn,info);
 	  return;
 	}
       //consuming message
@@ -407,76 +465,54 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
       memberName=msgItems[12];
       memberPointSum=msgItems[13];
       string sqlStatementConsumation;
-      string sep="','";
+      
       sqlStatementConsumation="insert into demoOrder(ClientID,Date_time,Total_money,Status,Order_number,Pay_type,Currency, Member_number,Member_point,Membername,Memberpoint_sum)values('"+clientIDStr+sep+date+sep+totalMoney+sep+status+sep
 	+orderNumber+sep+payType+sep+currency
 	+sep+memberNumber+sep+memberPoint
 	+sep+memberName+sep+memberPointSum+"')";
-      //mysql_ping(&LocalMysqlConnection::instance());
-      if(mysql_query(&LocalMysqlConnection::instance(),"START TRANSACTION"))
+	
+      if(mysqlQueryWrap(&LocalMysqlConnection::instance(),"START TRANSACTION",conn,false)) return;
+
+      string sqlStatementDAClients="SELECT DAClientID FROM demoDAClients where Company_code="+companyIDStr+" AND Isnew=0";
+      if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementDAClients,conn,true)) return;
+
+      //insert into demoCache
+     
+      MysqlRes resultDAClients(&LocalMysqlConnection::instance());
+      string sqlStatementCache="INSERT INTO demoCache(DAClientID,Command,ToDelete) VALUES";
+      int oriszCache=sqlStatementCache.size();
+     
+      if(resultDAClients.isValid())
 	{
-	  if(mysql_errno(&LocalMysqlConnection::instance())==2006)
+
+	  MYSQL_ROW row;
+	  while((row=resultDAClients.fetchRow()))
 	    {
-	      conn->send("mysql server has gone away and reconnecting...");
-	      mysql_ping(&LocalMysqlConnection::instance());
-	      mysql_query(&LocalMysqlConnection::instance(),"START TRANSACTION");//restart the mysql_query after reconnecting
-	    }
-	  else
-	    {
-	      string info=getInfoPrefix(conn)+" MYSQL ERROR:inserted error:"
-		+string(mysql_error(&LocalMysqlConnection::instance()));
-	      debugPrint("%s\n",info.c_str());
-	      LOG_ERROR<<info;
-	  
-#ifdef DEBUG_INVALID_MSG_INFORM
-	      conn->send(info);
-#else
-	      conn->send(MSG_INVALID_RETURN);
-#endif
-	      return;
+	      string increment="('"+string(row[0])+sep+oriMsg+sep+string("0")+"'),";
+	      sqlStatementCache+=increment;
 	    }
 	}
-      if(!mysql_query(&LocalMysqlConnection::instance(),sqlStatementConsumation.c_str()))
+      if(static_cast<int>(sqlStatementCache.size())>oriszCache)
 	{
-	  debugPrint("%s MYSQL INFO: inserted %lu rows\n",
-		     getInfoPrefix(conn).c_str(),
-		     static_cast<unsigned long>(mysql_affected_rows(&LocalMysqlConnection::instance())));
-	}
-      else
-	{
-	  string info=getInfoPrefix(conn)+" MYSQL ERROR:inserted error:"
-	    +string(mysql_error(&LocalMysqlConnection::instance()));
-	  debugPrint("%s\n",info.c_str());
-	  LOG_ERROR<<info;
-	  
-#ifdef DEBUG_INVALID_MSG_INFORM
-	  conn->send(info);
-#else
-	  conn->send(MSG_INVALID_RETURN);
-#endif
-	  mysql_query(&LocalMysqlConnection::instance(),"ROLLBACK");
-	  return;
+	  sqlStatementCache.pop_back();
+	  if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementCache,conn,true)) return;
 	}
 
+      if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementConsumation,conn,true)) return;
+	
       string orderIDStr=to_string(mysql_insert_id(&LocalMysqlConnection::instance()));
       string sqlStatementOrderitem="insert into demoOrderitem(OrderID,Name,Number) values";
       int orisz=sqlStatementOrderitem.size();
       for(size_t i=3+MSG_CONSUMING_ITEMS_NUM_MIN;i<=msgItems.size()-2;++i)
 	{
 	  vector<string>commodity;
-    	  boost::split(commodity,msgItems[i],boost::is_any_of(","));
+	  boost::split(commodity,msgItems[i],boost::is_any_of(","));
 	  if(commodity.size()!=2)
 	    {
 	      string info=getInfoPrefix(conn)+
 		" WARN: each sales item should include two parts";
-	      debugPrint("%s\n",info.c_str());
-	      LOG_WARN<<info;
-#ifdef DEBUG_INVALID_MSG_INFORM
-	      conn->send(info);
-#else
-	      conn->send(MSG_INVALID_RETURN);
-#endif
-	      mysql_query(&LocalMysqlConnection::instance(),"ROLLBACK");
+	      invalidInfoWarn(conn,info);
+	      if(mysqlQueryWrap(&LocalMysqlConnection::instance(),"ROLLBACK",conn,false)) return;
 	      return;
 	    }
 	  else
@@ -493,32 +529,12 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
 	{
 	  //batch insertion for optimization
 	  sqlStatementOrderitem.pop_back();//remove last character ','
-	  if(!mysql_query(&LocalMysqlConnection::instance(),sqlStatementOrderitem.c_str()))
-	    {
-	      debugPrint("%s MYSQL INFO: inserted %lu rows\n",
-			 getInfoPrefix(conn).c_str(),
-			 static_cast<unsigned long>(mysql_affected_rows(&LocalMysqlConnection::instance())));
-	    }
-	  else
-	    {
-	      string info=getInfoPrefix(conn)+" MYSQL ERROR:inserted error:"
-		+string(mysql_error(&LocalMysqlConnection::instance()));
-	      debugPrint("%s\n",info.c_str());
-	      LOG_ERROR<<info;
-	  
-#ifdef DEBUG_INVALID_MSG_INFORM
-	      conn->send(info);
-#else
-	      conn->send(MSG_INVALID_RETURN);
-#endif
-	      mysql_query(&LocalMysqlConnection::instance(),"ROLLBACK");
-	      return;
-	    }
+	  if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementOrderitem,conn,true)) return;
 	}
       
-      string consumingMsgRet="7e|02|"+orderNumber+"|e7";
+      string consumingMsgRet=setupMessage(orderNumber,"02");
       conn->send(consumingMsgRet);
-      mysql_query(&LocalMysqlConnection::instance(),"COMMIT");
+      if(mysqlQueryWrap(&LocalMysqlConnection::instance(),"COMMIT",conn,false)) return;
     }
   else if(command=="04")
     {
@@ -528,58 +544,35 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
 	  string info=getInfoPrefix(conn)+" WARN: data length("+
 	    msgItems[2]+
 	    ") should be 1 (adver (re)transmission request message:7e|04|1|clientID|e7)";
-	  debugPrint("%s\n",info.c_str());
-	  LOG_WARN<<info;
-#ifdef DEBUG_INVALID_MSG_INFORM
-	  conn->send(info);
-#else
-	  conn->send(MSG_INVALID_RETURN);
-#endif
+	  invalidInfoWarn(conn,info);
 	  return;
 	}
       //adver (re)transmission request message
       debugPrint("[%s,%s] INFO: adver (re)transmission request package received\n",
-	         getLocalTimeString().c_str(),
+		 getLocalTimeString().c_str(),
 		 conn->peerAddress().toIpPort().c_str());
 
       string sqlStatementAdver="SELECT ClientID,ID,Adname,URL,Date_start,Date_end FROM demoAdver where ClientID="+clientIDStr+" AND Isreturn=0";
-      if(mysql_query(&LocalMysqlConnection::instance(),sqlStatementAdver.c_str()))
+      if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementAdver,conn,false)) return;
+   
+      MysqlRes resultAdver(&LocalMysqlConnection::instance());
+     
+      if(resultAdver.isValid())
 	{
-	  string info=getInfoPrefix(conn)+" MYSQL ERROR:demoAdver select error:"
-	    +string(mysql_error(&LocalMysqlConnection::instance()));
-	  debugPrint("%s\n",info.c_str());
-	  LOG_ERROR<<info;
-	  
-#ifdef DEBUG_INVALID_MSG_INFORM
-	  conn->send(info);
-#else
-	  conn->send(MSG_INVALID_RETURN);
-#endif
-	  return;	  
-	}
-
-      MYSQL_RES *result = mysql_store_result(&LocalMysqlConnection::instance());
-      if(result==NULL)
-	{
-	  string info=getInfoPrefix(conn)+" MYSQL ERROR: can not store results:"+
-	    string(mysql_error(&LocalMysqlConnection::instance()));
-	  debugPrint("%s\n",info.c_str());
-	  LOG_ERROR<<info;
-	}
-      else
-	{
-	  int fieldsNum=mysql_num_fields(result);
+	  int fieldsNum=resultAdver.numFields();
 	  MYSQL_ROW row;
-	  row=mysql_fetch_row(result);
+	  row=resultAdver.fetchRow();
 	  if(row)
 	    {
-	      string adverInfo="7e|03|6";
+	      string adverInfo;
 	      for(int k=0;k<fieldsNum;++k)
 		{
-		  adverInfo+="|";
+		  
 		  adverInfo+=string((row[k]?row[k]:"NULL"));
+		  adverInfo+="|";
 		}
-	      adverInfo+="|e7";
+	      if(!adverInfo.empty())adverInfo.pop_back();
+	      adverInfo=setupMessage(adverInfo,"03");
 	      debugPrint("%s INFO: return adverInfo:%s",
 			 getInfoPrefix(conn).c_str(),adverInfo.c_str());
 	      conn->send(adverInfo);
@@ -589,7 +582,7 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
 	      debugPrint("%s INFO: there is no Adver for client %s to receive\n",
 			 getInfoPrefix(conn).c_str() ,clientIDStr.c_str());
 	    }
-	  mysql_free_result(result);
+
 	}
 	    
     }
@@ -601,13 +594,7 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
 	  string info=getInfoPrefix(conn)+" WARN: data length("+
 	    msgItems[2]+
 	    ") should be 2 (adver confirmation return message:7e|05|2|clientID|adverID|e7)";
-	  debugPrint("%s\n",info.c_str());
-	  LOG_WARN<<info;
-#ifdef DEBUG_INVALID_MSG_INFORM
-	  conn->send(info);
-#else
-	  conn->send(MSG_INVALID_RETURN);
-#endif
+	  invalidInfoWarn(conn,info);
 	  return;
 	}
       //adver confirmation return message
@@ -619,69 +606,31 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
       adIDStr=msgItems[4];
       sqlStatementAdverIsreturnSet="UPDATE demoAdver SET Isreturn='1' WHERE ID="
 	+adIDStr;
-      mysql_ping(&LocalMysqlConnection::instance());
-      if(!mysql_query(&LocalMysqlConnection::instance(),sqlStatementAdverIsreturnSet.c_str()))
-	{
-	  debugPrint("%s Update %lu rows\n",getInfoPrefix(conn).c_str(),
-		     static_cast<unsigned long>(mysql_affected_rows(&LocalMysqlConnection::instance())));
-	}
-      else
-	{
-	  string info=getInfoPrefix(conn)+" MYSQL ERROR: mysql update error:"+
-	    string(mysql_error(&LocalMysqlConnection::instance()));
-	  debugPrint("%s\n",info.c_str());
-	  LOG_ERROR<<info;
-	  
-#ifdef DEBUG_INVALID_MSG_INFORM
-	  conn->send(info);
-#else
-	  conn->send(MSG_INVALID_RETURN);
-#endif
-	  return;
-	}
+      if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementAdverIsreturnSet,conn,false)) return;
       //send next adver unreceived
       string adverInfo,sqlStatementAdver;
       debugPrint("%s INFO: gonna send another Adver unreceived\n",
 		 getInfoPrefix(conn).c_str());
       sqlStatementAdver="SELECT ClientID,ID,Adname,URL,Date_start,Date_end FROM demoAdver where ClientID="+clientIDStr+" AND Isreturn=0";
-      mysql_ping(&LocalMysqlConnection::instance());
-      if(mysql_query(&LocalMysqlConnection::instance(),sqlStatementAdver.c_str()))
-	{
-	  string info=getInfoPrefix(conn)+" MYSQL ERROR:demoAdver select error:"
-	    +string(mysql_error(&LocalMysqlConnection::instance()));
-	  debugPrint("%s\n",info.c_str());
-	  LOG_ERROR<<info;
-	  
-#ifdef DEBUG_INVALID_MSG_INFORM
-	  conn->send(info);
-#else
-	  conn->send(MSG_INVALID_RETURN);
-#endif
-	  return;	  
-	}
+      if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementAdver,conn,false)) return;
       
-      MYSQL_RES *result = mysql_store_result(&LocalMysqlConnection::instance());
-      if(result==NULL)
+      MysqlRes resultAdver(&LocalMysqlConnection::instance());
+      if(resultAdver.isValid())
 	{
-	  string info=getInfoPrefix(conn)+" MYSQL ERROR: can not store results:"+
-	    string(mysql_error(&LocalMysqlConnection::instance()));
-	  debugPrint("%s\n",info.c_str());
-	  LOG_ERROR<<info;
-	}
-      else
-	{
-	  int fieldsNum=mysql_num_fields(result);
+	  int fieldsNum=resultAdver.numFields();
 	  MYSQL_ROW row;
-	  row=mysql_fetch_row(result);
+	  row=resultAdver.fetchRow();
 	  if(row)
 	    {
-	      string adverInfo="7e|03|6";
+	      string adverInfo;
 	      for(int k=0;k<fieldsNum;++k)
 		{
-		  adverInfo+="|";
+		 
 		  adverInfo+=string((row[k]?row[k]:"NULL"));
+		  adverInfo+="|";
 		}
-	      adverInfo+="|e7";
+	      if(!adverInfo.empty())adverInfo.pop_back();
+	      adverInfo=setupMessage(adverInfo,"03");
 	      debugPrint("%s INFO: return adverInfo:%s",
 			 getInfoPrefix(conn).c_str(),adverInfo.c_str());
 	      conn->send(adverInfo);
@@ -691,157 +640,149 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
 	      debugPrint("%s INFO: there is no Adver for client %s to receive",
 			 getInfoPrefix(conn).c_str() ,clientIDStr.c_str());
 	    }
-	  mysql_free_result(result);
+	 
 	}
     }
-  else if(command=="06")
+  else if(command=="07")
     {
-      //length check
-      if(itemsLen!=3)
+      if(itemsLen!=1)
 	{
 	  string info=getInfoPrefix(conn)+" WARN: data length("+
 	    msgItems[2]+
-	    ") should be 3";
-	  debugPrint("%s\n",info.c_str());
-	  LOG_WARN<<info;
-#ifdef DEBUG_INVALID_MSG_INFORM
-	  conn->send(info);
-#else
-	  conn->send(MSG_INVALID_RETURN);
-#endif
+	    ") should be 1 (loading consuming items message:7e|07|1|clientID|e7)";
+	  invalidInfoWarn(conn,info);
 	  return;
 	}
-      //data query request
-      debugPrint("[%s,%s] INFO: data query request package received\n",
-		 getLocalTimeString().c_str(),
-		 conn->peerAddress().toIpPort().c_str());
-      string sqlStatementClientQuery,sqlStatementProductQuery;
-      vector<string>times;
-      boost::split(times,msgItems[4],boost::is_any_of(","));
-      if(times.size()!=2)
+
+      if(!processDAClientQuery(conn,sep,companyIDStr,clientIDStr))return;
+
+    }//command=="07"
+
+  else if(command=="08")
+    {
+      if(itemsLen!=2)
 	{
-	  string info=getInfoPrefix(conn)+
-	    " WARN: |start date,end date| is needed!The other format is invalid.";
-	  debugPrint("%s\n",info.c_str());
-	  LOG_WARN<<info;
-#ifdef DEBUG_INVALID_MSG_INFORM
-	  conn->send(info);
-#else
-	  conn->send(MSG_INVALID_RETURN);
-#endif
+	  string info=getInfoPrefix(conn)+" WARN: data length("+
+	    msgItems[2]+
+	    ") should be 2(loading consuming items message:7e|08|2|clientID|1or0|e7)";
+	  invalidInfoWarn(conn,info);
 	  return;
 	}
-      string start_date="'"+times[0]+"'",end_date="'"+times[1]+"'";
-      vector<string>clients;
-      boost::split(clients,msgItems[5],boost::is_any_of(","));
-      if(clients.empty())
+      string isSuccess=msgItems[4];
+      if(isSuccess=="0")
 	{
-	  string info=getInfoPrefix(conn)+
-	    " WARN: empty clients set for querying.";
-	  debugPrint("%s\n",info.c_str());
-	  LOG_WARN<<info;
-#ifdef DEBUG_INVALID_MSG_INFORM
-	  conn->send(info);
-#else
-	  conn->send(MSG_INVALID_RETURN);
-#endif
-	  return;
-	}
-      string clientsStr="(";
-      for(auto&client:clients)
-	{
-	  clientsStr+="'";
-	  clientsStr+=client;
-	  clientsStr+="'";
-	  clientsStr+=",";
-	}
-      clientsStr[clientsStr.size()-1]=')';
-      sqlStatementProductQuery="select i.name,sum(i.number) as product_num from demoOrder as o,demoOrderitem as i where (o.ID=i.orderID) and (o.clientID in "+clientsStr+") and (date(o.date_time) between "+start_date+" and "+end_date+") group by i.name order by product_num desc";
-      sqlStatementClientQuery="select clientID,count(*) as order_num,sum(total_money) as order_total_money from demoOrder where (clientID in "+clientsStr+") and (date(date_time) between "+start_date+" and "+end_date+") group by clientID order by order_total_money desc";
-      mysql_ping(&LocalMysqlConnection::instance());
-      if(mysql_query(&LocalMysqlConnection::instance(),sqlStatementProductQuery.c_str()))
-	{
-	  string info=getInfoPrefix(conn)+" MYSQL ERROR:select error in product query:"
-	    +string(mysql_error(&LocalMysqlConnection::instance()));
-	  debugPrint("%s\n",info.c_str());
-	  LOG_ERROR<<info;
-	  
-#ifdef DEBUG_INVALID_MSG_INFORM
-	  conn->send(info);
-#else
-	  conn->send(MSG_INVALID_RETURN);
-#endif
-	  return;	  
-	}
-      string query_ret="7e|06|";
-      MYSQL_RES *result_product = mysql_store_result(&LocalMysqlConnection::instance());
-      if(result_product==NULL)
-	{
-	  string info=getInfoPrefix(conn)+" MYSQL ERROR: can not store results:"+
-	    string(mysql_error(&LocalMysqlConnection::instance()));
-	  debugPrint("%s\n",info.c_str());
-	  LOG_ERROR<<info;
+	  //not success,retransmission
+	  if(!processDAClientQuery(conn,sep,companyIDStr,clientIDStr))return;
 	}
       else
 	{
-	  MYSQL_ROW row;
-	  string item_result_product;
-	  while ((row = mysql_fetch_row(result_product)))
-	    {
-	      string curRow=string(row[0])+"!"+string(row[1]);
-	      item_result_product+=curRow;
-	      item_result_product+=",";
-	    }
-	  if(!item_result_product.empty())
-	    item_result_product[item_result_product.size()-1]='|';
-	  else
-	    item_result_product="|";
-	  query_ret+=item_result_product;
-	  mysql_free_result(result_product);
+	   //delete from demoCache
+	  if(mysqlQueryWrap(&LocalMysqlConnection::instance(),"START TRANSACTION",conn,false)) return;
+	  string sqlStatementDeleteCache="DELETE FROM demoCache WHERE DAClientID="+clientIDStr+" AND Todelete=1";
+	  if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementDeleteCache,conn,true))return;
+	  if(mysqlQueryWrap(&LocalMysqlConnection::instance(),"COMMIT",conn,false))return;
 	}
-
-      if(mysql_query(&LocalMysqlConnection::instance(),sqlStatementClientQuery.c_str()))
-	{
-	  string info=getInfoPrefix(conn)+" MYSQL ERROR:select error in client query:"
-	    +string(mysql_error(&LocalMysqlConnection::instance()));
-	  debugPrint("%s\n",info.c_str());
-	  LOG_ERROR<<info;
-	  
-#ifdef DEBUG_INVALID_MSG_INFORM
-	  conn->send(info);
-#else
-	  conn->send(MSG_INVALID_RETURN);
-#endif
-	  return;	  
-	}
-
-      MYSQL_RES *result_client = mysql_store_result(&LocalMysqlConnection::instance());
-      if(result_client==NULL)
-	{
-	  string info=getInfoPrefix(conn)+" MYSQL ERROR: can not store results:"+
-	    string(mysql_error(&LocalMysqlConnection::instance()));
-	  debugPrint("%s\n",info.c_str());
-	  LOG_ERROR<<info;
-	}
-      else
-	{
-	  MYSQL_ROW row;
-	  string item_result_client;
-	  while ((row = mysql_fetch_row(result_client)))
-	    {
-	      string curRow=string(row[0])+"!"+string(row[1])+"!"+string(row[2]);
-	      item_result_client+=curRow;
-	      item_result_client+=",";
-	    }
-	  if(!item_result_client.empty())
-	    item_result_client[item_result_client.size()-1]='|';
-	  else
-	    item_result_client="|";
-	  query_ret+=item_result_client;
-	  mysql_free_result(result_client);
-	}
-      query_ret+="e7";
-      conn->send(query_ret);
+     
+      
     }
-
+    
 }//end of processstringmessage()
+
+bool DemoServer::processDAClientQuery(const TcpConnectionPtr& conn,const string& sep,const string& companyIDStr,const string& clientIDStr)
+{
+  
+      if(mysqlQueryWrap(&LocalMysqlConnection::instance(),"START TRANSACTION",conn,false)) return false;
+      
+      string sqlStatementDAClients="SELECT Isnew FROM demoDAClients WHERE DAClientID="+clientIDStr;
+      if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementDAClients,conn,true))return false;
+      MysqlRes resultDAClients(&LocalMysqlConnection::instance());
+      if(resultDAClients.isValid())
+	{
+	  MYSQL_ROW row=resultDAClients.fetchRow();
+	  if(row)
+	    {
+	      int isNew=stoi(string(row[0]));
+	      if(isNew==1)
+		{
+		  //a new DAClient
+		  string sqlStatementOrder="SELECT ID,ClientID,Date_time,Total_money,Status,Order_number,Pay_type,Currency, Member_number,Member_point,Membername,Memberpoint_sum FROM demoOrder WHERE LEFT(ClientID,"+to_string(COMPANY_CODE_PREFIX_LEN)+")="+companyIDStr;
+		  string ID,ClientID,Date_time,Total_money,Status,Order_number,Pay_type,Currency, Member_number,Member_point,Membername,Memberpoint_sum;
+		  if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementOrder,conn,true))return false;
+		  MysqlRes resultOrder(&LocalMysqlConnection::instance());
+		  if(resultOrder.isValid())
+		    {
+		      
+		      MYSQL_ROW row;
+		      while((row=resultOrder.fetchRow()))
+			{
+			  ID=string(row[0]);
+			  ClientID=string(row[1]);
+			  Date_time=string(row[2]);
+			  Total_money=string(row[3]);
+			  Status=string(row[4]);
+			  Order_number=string(row[5]);
+			  Pay_type=string(row[6]);
+			  Currency=string(row[7]);
+			  Member_number=string(row[8]);
+			  Member_point=string(row[9]);
+			  Membername=string(row[10]);
+			  Memberpoint_sum=string(row[11]);
+			  string pre=ClientID+'|'+Date_time+'|'+Total_money+'|'+Status+'|'+Pay_type+'|'+Order_number+'|'+Currency+'|'+Member_number+'|'+Member_point+'|'+Membername+'|'+Memberpoint_sum;
+			  string sqlStatementOrderitem="SELECT Name,Number FROM demoOrderitem WHERE OrderID="+ID;
+			  if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementOrderitem,conn,true))return false;
+			  MysqlRes resultOrderitem(&LocalMysqlConnection::instance());
+			  if(resultOrderitem.isValid())
+			    {
+			      MYSQL_ROW row2;
+			      bool notEmpty=false;
+			      while((row2=resultOrderitem.fetchRow()))
+				{
+				  notEmpty=true;
+				  pre+='|';
+				  pre+=string(row2[0]);
+				  pre+=',';
+				  pre+=string(row2[1]);
+				}
+			      if(notEmpty)
+				{
+				  //restore the consuming message
+				  string Command=setupMessage(pre,"02");
+				  string sqlStatementInsertCache="INSERT INTO demoCache(DAClientID,Command,ToDelete) VALUES";
+				  string increment="('"+clientIDStr+sep+Command+sep+string("0")+"')";
+				  sqlStatementInsertCache+=increment;
+				  if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementInsertCache,conn,true))return false;
+				    
+				}
+			    }
+						   
+			}
+		     
+		    }
+		   string sqlStatementUpdateDAClients="UPDATE demoDAClients SET Isnew=0 WHERE DAClientID="+clientIDStr;
+		   if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementUpdateDAClients,conn,true))return false;
+		}
+	      //ClientID is not new from below;
+              string sqlStatementSelectCache="SELECT Command FROM demoCache WHERE DAClientID="+clientIDStr;
+	      if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementSelectCache,conn,true))return false;
+	      MysqlRes resultSelectCache(&LocalMysqlConnection::instance());
+	      if(resultSelectCache.isValid())
+		{
+		  MYSQL_ROW row3;
+		  while((row3=resultSelectCache.fetchRow()))
+		    {
+		      conn->send(setupMessage(string(row3[0]),"07"));
+		    }
+		}
+	      //set toDelete
+	      string sqlStatementUpdateCache="UPDATE demoCache SET ToDelete=1 WHERE DAClientID="+clientIDStr;
+	      if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementUpdateCache,conn,true))return false;
+	    }
+
+	  //ClientID is not in table demoDAClients from below;
+	}
+      // sending a message to client when done
+      conn->send(setupMessage("1","08"));
+      
+      if(mysqlQueryWrap(&LocalMysqlConnection::instance(),"COMMIT",conn,false))return false;
+      return true;
+}

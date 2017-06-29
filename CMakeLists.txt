@@ -5,9 +5,9 @@ SET (CMAKE_BUILD_TYPE "Release" )
 SET (CMAKE_CXX_COMPILER g++ )
 add_compile_options(-std=c++11)
 #activate when SET (CMAKE_BUILD_TYPE "Release" ) -DNDEBUG option makes assert(expr) an empty operation
-SET (CMAKE_CXX_FLAGS_RELEASE "$ENV{CXXFLAGS} -O2 -Wall -finline-limit=1000 -DNDEBUG -DMUDUO_STD_STRING")
+SET (CMAKE_CXX_FLAGS_RELEASE "$ENV{CXXFLAGS} -O2 -Wall -Wparentheses -finline-limit=1000 -DNDEBUG -DMUDUO_STD_STRING")
 #activate when SET (CMAKE_BUILD_TYPE "Debug" )
-SET (CMAKE_CXX_FLAGS_DEBUG "$ENV{CXXFLAGS} -o0 -Wall -g2 -ggdb -DMUDUO_STD_STRING")
+SET (CMAKE_CXX_FLAGS_DEBUG "$ENV{CXXFLAGS} -o0 -Wall -Wparentheses -g2 -ggdb -DMUDUO_STD_STRING")
 
 
 #add all source files
