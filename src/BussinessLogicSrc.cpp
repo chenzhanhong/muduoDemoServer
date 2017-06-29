@@ -154,144 +154,19 @@ void DemoServer::onMessage(const TcpConnectionPtr& conn, Buffer* buf, Timestamp 
       LocalWeakConnectionList::instance().back().insert(entry);
     }  
 
-  //handles readable bytes less than 3 
-  //int bytesNum=buf->readableBytes();
   string header;
-  /*
-  switch(bytesNum)
-    {
-    case 1:
-      {
-	header=string(buf->peek(),1);
-	if(header!="7")
-	  {
-	    
-	    forceCloseLog(conn,"NOT protocally correct message",header);
-	    return;
-	  }
-	return;
-      }
-    case 2:
-      {
-	header=string(buf->peek(),2);
-	if(header!="7e")
-	  {
-	    
-	    forceCloseLog(conn,"NOT protocally correct message",header);
-	    conn->forceClose();
-	    return;
-	  }
-	return;
-      }
-    default:
-      {
-	break;
-      }
-	
-    }
-  */
-  
-  //handles with readableBytes >=3
+ 
   string totalMsg(buf->peek(),buf->readableBytes());
   string str;
   bool isHeaderFound=false;
   bool isLenFound=false;
   string::size_type sepLen1,sepLen2;
-  size_t len;
+  size_t len=0;
   size_t i=0;
   //for(size_t i=0;i<totalMsg.size();++i)
   while(i<totalMsg.size())
     {
-      /*
-      if(!isHeaderFound)
-	{
-	  posCurHead=totalMsg.find("7e|",i);
-	  if(posCurHead==string::npos)
-	    {
-	      if(totalMsg.substr(totalMsg.size()-1)=="7")
-		{
-		  if(buf->readableBytes()-1!=0)
-		    {
-		      
-		      debugPrint("[%s,%s] WARN: NOT protocally correct message:%s\n",
-				 getLocalTimeString().c_str(),
-				 conn->peerAddress().toIpPort().c_str(),
-				 string(buf->peek(),
-					buf->readableBytes()-1).c_str());
-		      LOG_WARN<<"["<<getLocalTimeString()<<","
-			      <<conn->peerAddress().toIpPort()
-			      <<"] NOT protocally correct message";
-		      //buf->retrieve(buf->readableBytes()-1);
-		      conn->forceClose();
-		      return;
-		    }
-		}
-	      else if(totalMsg.substr(totalMsg.size()-2)=="7e")
-		{
-		  if(buf->readableBytes()-2!=0)
-		    {
-		     
-		      debugPrint("[%s,%s] WARN: NOT protocally correct message:%s\n",
-				 getLocalTimeString().c_str(),
-				 conn->peerAddress().toIpPort().c_str(),
-				 string(buf->peek(),
-					buf->readableBytes()-2).c_str());
-		      LOG_WARN<<"["<<getLocalTimeString()<<","
-			      <<conn->peerAddress().toIpPort()
-			      <<"] NOT protocally correct message";
-		      buf->retrieve(buf->readableBytes()-2);
-		      conn->forceClose();
-		      return;
-		    }
-		}
-	      else
-		{
-		  debugPrint("[%s,%s] WARN: NOT protocally correct message:%s\n",
-			     getLocalTimeString().c_str(),
-			     conn->peerAddress().toIpPort().c_str(),
-			     (buf->retrieveAllAsString()).c_str());
-		  LOG_WARN<<"["<<getLocalTimeString()<<","
-			  <<conn->peerAddress().toIpPort()
-			  <<"] NOT protocally correct message";
-		  conn->forceClose();
-		  return;
-		}
-	      if(buf->readableBytes()>MSG_PENDING_MAX)
-		{
-		  debugPrint("[%s,%s] WARN: pending buffer may overflow\n",
-			     getLocalTimeString().c_str(),
-			     conn->peerAddress().
-			     toIpPort().c_str());
-		  LOG_WARN<<"["<<getLocalTimeString()<<","
-			  <<conn->peerAddress().toIpPort()
-			  <<"] pending buffer may overflow";
-		  conn->forceClose();
-		  return;
-		}
-	      return;
-	    }
-	  else
-	    {
-	      isHeaderFound=true;
-	      i=posCurHead+2;
-	      if(posCurHead>posPeek)
-		{
-		 
-		  debugPrint("[%s,%s] WARN: NOT protocally correct message:%s\n",
-			     getLocalTimeString().c_str(),
-			     conn->peerAddress().toIpPort().c_str(),
-			     string(buf->peek(),posCurHead-posPeek).c_str());
-		  LOG_WARN<<"["<<getLocalTimeString()<<","
-			  <<conn->peerAddress().toIpPort()
-			  <<"] NOT protocally correct message";
-		  conn->forceClose();
-		  return;
-		  //buf->retrieve(posCurHead-posPeek);
-		  //posPeek=posCurHead;
-		}
-	    }
-	}
-      */
+   
       if(!isHeaderFound)
 	{
 	  if(i==totalMsg.size()-1)

@@ -51,7 +51,7 @@ namespace boost
 #define MSG_ITEMS_NUM_MIN  5
 #define MSG_PENDING_MAX 65536
 
-#define DEBUG_MODE  //undef DEBUG_MODE for making debugPrint an empty statement
+//#define DEBUG_MODE  //undef DEBUG_MODE for making debugPrint an empty statement
 #define DEBUG_INVALID_MSG_INFORM //informing the client in concrete explanation when receiving an invalid but protocally correct message
 
 
