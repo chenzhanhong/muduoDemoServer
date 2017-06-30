@@ -44,22 +44,34 @@ namespace boost
 }
 #endif
 
-#define MAX_MSG_LEN_BIT_NUM 6
-#define COMPANY_CODE_PREFIX_LEN 5
-#define MSG_CONSUMING_ITEMS_NUM_MIN 11
-#define MSG_INVALID_RETURN "7e|04|000015|e7"
-#define MSG_ITEMS_NUM_MIN  5
+
+
 #define MSG_PENDING_MAX 65536
+#define MSG_INVALID_RETURN "7e|04|000015|e7"
 
 //#define DEBUG_MODE  //undef DEBUG_MODE for making debugPrint an empty statement
+
 #define DEBUG_INVALID_MSG_INFORM //informing the client in concrete explanation when receiving an invalid but protocally correct message
-
-
 #ifdef  DEBUG_MODE 
 #define DEBUG_PRINT 1 //1:turn on printing in non-daemon
 #else
 #define DEBUG_PRINT 0
 #endif
+
+
+//hard codes below,may change in the future according to different format of protocol
+#define MAX_MSG_LEN_BIT_NUM 6
+#define COMPANY_CODE_PREFIX_LEN 5
+#define MSG_CONSUMING_ITEMS_NUM_MIN 11
+#define MSG_ITEMS_NUM_MIN  5
+#define MSG_ITEMS_NUM_01 5
+#define MSG_ITEMS_NUM_02 15
+#define MSG_ITEMS_NUM_04 5
+#define MSG_ITEMS_NUM_05 6
+#define MSG_ITEMS_NUM_07 5
+#define MSG_ITEMS_NUM_08 6
+
+
 
 //when define a macro function,you must use "do{;}while(0)"!!!!
 //https://onevcat.com/2014/01/black-magic-in-macro/
@@ -143,6 +155,7 @@ namespace dsrv
     void forceCloseLog(const TcpConnectionPtr& conn,const string& logInfo,string msg);
     bool mysqlQueryWrap(MYSQL *mysql,const string& sqlStatement,const TcpConnectionPtr& conn,bool isRollback);
     void invalidInfoWarn(const TcpConnectionPtr& conn,const string& info);
+    bool checkNumOfItems(const vector<string>&msgItems,const TcpConnectionPtr& conn);
     string setupMessage(const string&strMiddle,string cmd);
     bool processDAClientQuery(const TcpConnectionPtr& conn,const string& sep,const string& companyIDStr,const string& clientIDStr);
     void onTimer();

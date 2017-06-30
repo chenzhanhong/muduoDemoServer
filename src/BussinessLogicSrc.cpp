@@ -135,6 +135,7 @@ void DemoServer::forceCloseLog(const TcpConnectionPtr& conn,const string& logInf
   conn->forceClose();
 }
 
+
 void DemoServer::onMessage(const TcpConnectionPtr& conn, Buffer* buf, Timestamp time)
 {
   //It is essential to process the message buffer on user application layer because TCP is based on borderless byte stream.
@@ -272,6 +273,65 @@ void DemoServer::onMessage(const TcpConnectionPtr& conn, Buffer* buf, Timestamp 
   return;
 }
 
+bool DemoServer::checkNumOfItems(const vector<string>&msgItems,const TcpConnectionPtr& conn)
+{
+  int numOfItems=msgItems.size();
+  string info="",infoPrefix=getInfoPrefix(conn);
+  info+=infoPrefix;
+  if(msgItems.size()<MSG_ITEMS_NUM_MIN)
+    {
+      info+=" WARN: total number of items("+to_string(msgItems.size())+
+	") in a message should not less than "+
+	to_string(MSG_ITEMS_NUM_MIN);
+      invalidInfoWarn(conn,info);
+      return false;
+    }
+
+  string command=msgItems[1];
+  if(command!="01"&&command!="02"&&command!="04"&&command!="05"&&command!="07"&&command!="08")
+    {
+      info+=" WARN: can not resolve command("+command+")";
+      invalidInfoWarn(conn,info);
+      return false;
+    }
+
+  info+=" WARN: number of items does not match the expected";
+  bool isRight=true;
+  if(command=="01")
+    {
+      if(numOfItems!=MSG_ITEMS_NUM_01)
+	isRight=false;
+    }
+  else if(command=="02")
+    {
+      if(numOfItems<=MSG_ITEMS_NUM_02)
+	isRight=false;
+    }
+  else if(command=="04")
+    {
+      if(numOfItems!=MSG_ITEMS_NUM_04)
+	isRight=false;
+    }
+  else if(command=="05")
+    {
+      if(numOfItems!=MSG_ITEMS_NUM_05)
+	isRight=false;
+    }
+  else if(command=="07")
+    {
+      if(numOfItems!=MSG_ITEMS_NUM_07)
+	isRight=false;
+    }
+  else if(command=="08")
+    {
+      if(numOfItems!=MSG_ITEMS_NUM_08)
+	isRight=false;
+    }
+  if(!isRight)
+    invalidInfoWarn(conn,info);
+  return isRight;
+}
+
 void DemoServer::onStringMessage(const TcpConnectionPtr& conn,
 				 const string& msg, const Timestamp& time)
 {
@@ -284,34 +344,15 @@ void DemoServer::onStringMessage(const TcpConnectionPtr& conn,
   
   vector<string>msgItems;
   boost::split(msgItems,msg,boost::is_any_of("|"));
+  string info="",infoPrefix=getInfoPrefix(conn);
+  info+=infoPrefix;
 
-  if(msgItems.size()<MSG_ITEMS_NUM_MIN)
-    {
-      string info="["+getLocalTimeString()+","+
-	conn->peerAddress().toIpPort()+
-	"] WARN: total number of items("+to_string(msgItems.size())+
-	") in a message should not less than "+
-	to_string(MSG_ITEMS_NUM_MIN);
-      invalidInfoWarn(conn,info);
-      return;
-    }
-
-  string command=msgItems[1];
-  if(command!="01"&&command!="02"&&command!="04"&&command!="05"&&command!="07"&&command!="08")
-    {
-      string info="["+getLocalTimeString()+","+
-	conn->peerAddress().toIpPort()+
-	"] WARN: can not resolve command("+command+")";
-      invalidInfoWarn(conn,info);
-      return;
-    }
+  if(!checkNumOfItems(msgItems,conn))return;
 
   string clientIDStr=msgItems[3];
   if(!isInteger(clientIDStr))
     {
-      string info="["+getLocalTimeString()+","+
-	conn->peerAddress().toIpPort()+
-	"] WARN: clientID("+clientIDStr+") should be integer";
+      info+=" WARN: clientID("+clientIDStr+") should be integer";
       invalidInfoWarn(conn,info);
       return;
     }
@@ -319,9 +360,7 @@ void DemoServer::onStringMessage(const TcpConnectionPtr& conn,
   int clientIDLen=clientIDStr.size();
   if(clientIDLen<COMPANY_CODE_PREFIX_LEN+1)
     {
-      string info="["+getLocalTimeString()+","+
-	conn->peerAddress().toIpPort()+
-	"] WARN: clientID("+clientIDStr+") should be no less than "+to_string(COMPANY_CODE_PREFIX_LEN+1);
+      info+=" WARN: clientID("+clientIDStr+") should be no less than "+to_string(COMPANY_CODE_PREFIX_LEN+1);
       invalidInfoWarn(conn,info);
       return;
     }
