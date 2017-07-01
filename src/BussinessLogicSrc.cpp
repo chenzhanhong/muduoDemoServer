@@ -253,6 +253,11 @@ void DemoServer::onMessage(const TcpConnectionPtr& conn, Buffer* buf, Timestamp 
 			  forceCloseLog(conn,"Len item is not integer",tsl);
 			  return;
 			}
+		      if(!tsl.empty()&&tsl[0]=='-')
+			{
+			  forceCloseLog(conn,"Len item should be positive",tsl);
+			  return;
+			}
 		      len=static_cast<size_t>(stoi(tsl));
 		      isLenFound=true;
 		      continue;
