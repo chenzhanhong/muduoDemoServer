@@ -306,12 +306,13 @@ bool DemoServer::checkNumOfItems(const vector<string>&msgItems,const TcpConnecti
       return false;
     }
 
-  info+=" WARN: number of items does not match the expected";
+  info+=" WARN: number of items does not match the expected:";
+  info+=command;
   bool isRight=true;
   if(command=="01")
     {
       if(numOfItems!=MSG_ITEMS_NUM_01)
-	isRight=false;
+	  isRight=false;
     }
   else if(command=="02")
     {
