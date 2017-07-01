@@ -407,13 +407,7 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
     }
   else if(command=="02")
     {
-      //length check
-      if(atoi(msgItems[2].c_str())<MSG_CONSUMING_ITEMS_NUM_MIN)
-	{
-	  string info=getInfoPrefix(conn)+" WARN: consuming items loss";
-	  invalidInfoWarn(conn,info);
-	  return;
-	}
+      
       //consuming message
       debugPrint("[%s,%s] INFO: consuming package received\n",
 		 getLocalTimeString().c_str(),
