@@ -155,7 +155,7 @@ namespace dsrv
     void forceCloseLog(const TcpConnectionPtr& conn,const string& logInfo,string msg);
     bool mysqlQueryWrap(MYSQL *mysql,const string& sqlStatement,const TcpConnectionPtr& conn,bool isRollback);
     void invalidInfoWarn(const TcpConnectionPtr& conn,const string& info);
-    bool checkNumOfItems(const vector<string>&msgItems,const TcpConnectionPtr& conn);
+    bool checkNumOfItems(const vector<string>&msgItems,const TcpConnectionPtr& conn,const string&msg);
     string setupMessage(const string&strMiddle,string cmd);
     bool processDAClientQuery(const TcpConnectionPtr& conn,const string& sep,const string& companyIDStr,const string& clientIDStr);
     void onTimer();

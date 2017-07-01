@@ -284,7 +284,7 @@ void DemoServer::onMessage(const TcpConnectionPtr& conn, Buffer* buf, Timestamp 
   return;
 }
 
-bool DemoServer::checkNumOfItems(const vector<string>&msgItems,const TcpConnectionPtr& conn)
+bool DemoServer::checkNumOfItems(const vector<string>&msgItems,const TcpConnectionPtr& conn,const string&msg)
 {
   int numOfItems=msgItems.size();
   string info="",infoPrefix=getInfoPrefix(conn);
@@ -307,7 +307,7 @@ bool DemoServer::checkNumOfItems(const vector<string>&msgItems,const TcpConnecti
     }
 
   info+=" WARN: number of items does not match the expected:";
-  info+=command;
+  info+=msg;
   bool isRight=true;
   if(command=="01")
     {
@@ -359,7 +359,7 @@ void DemoServer::onStringMessage(const TcpConnectionPtr& conn,
   string info="",infoPrefix=getInfoPrefix(conn);
   info+=infoPrefix;
 
-  if(!checkNumOfItems(msgItems,conn))return;
+  if(!checkNumOfItems(msgItems,conn,msg))return;
 
   string clientIDStr=msgItems[3];
   if(!isInteger(clientIDStr))
