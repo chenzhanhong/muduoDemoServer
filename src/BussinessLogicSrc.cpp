@@ -130,7 +130,7 @@ void DemoServer::forceCloseLog(const TcpConnectionPtr& conn,const string& logInf
 	     msg.c_str());
   LOG_WARN<<"["<<getLocalTimeString()<<","
 	  <<conn->peerAddress().toIpPort()
-	  <<"] "<<logInfo;
+	  <<"] "<<logInfo<<":"<<msg;
   //buf->retrieve(1);
   conn->forceClose();
 }
@@ -247,7 +247,13 @@ void DemoServer::onMessage(const TcpConnectionPtr& conn, Buffer* buf, Timestamp 
 		  sepLen2=totalMsg.find("|",sepLen1+1);
 		  if(sepLen2!=string::npos)
 		    {
-		      len=static_cast<size_t>(stoi(totalMsg.substr(sepLen1+1,sepLen2-sepLen1-1)));
+		      string tsl=totalMsg.substr(sepLen1+1,sepLen2-sepLen1-1);
+		      if(!isInteger(tsl))
+			{
+			  forceCloseLog(conn,"Len item is not integer",tsl);
+			  return;
+			}
+		      len=static_cast<size_t>(stoi(tsl));
 		      isLenFound=true;
 		      continue;
 		    }
