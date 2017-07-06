@@ -299,7 +299,7 @@ bool DemoServer::checkNumOfItems(const vector<string>&msgItems,const TcpConnecti
     }
 
   string command=msgItems[1];
-  if(command!="01"&&command!="02"&&command!="04"&&command!="05"&&command!="07"&&command!="08")
+  if(command!="01"&&command!="02"&&command!="04"&&command!="05"&&command!="07"&&command!="08"&&command!="12")
     {
       info+=" WARN: can not resolve command("+command+")";
       invalidInfoWarn(conn,info);
@@ -314,7 +314,7 @@ bool DemoServer::checkNumOfItems(const vector<string>&msgItems,const TcpConnecti
       if(numOfItems!=MSG_ITEMS_NUM_01)
 	  isRight=false;
     }
-  else if(command=="02")
+  else if(command=="02"||command=="12")
     {
       if(numOfItems<=MSG_ITEMS_NUM_02)
 	isRight=false;
@@ -405,7 +405,7 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
 		 getLocalTimeString().c_str(),
 		 conn->peerAddress().toIpPort().c_str());
     }
-  else if(command=="02")
+  else if(command=="02"||command=="12")
     {
       
       //consuming message
@@ -431,8 +431,28 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
 	+orderNumber+sep+payType+sep+currency
 	+sep+memberNumber+sep+memberPoint
 	+sep+memberName+sep+memberPointSum+"')";
-	
+      string consumingMsgRet=setupMessage(orderNumber,"02");
       if(mysqlQueryWrap(&LocalMysqlConnection::instance(),"START TRANSACTION",conn,false)) return;
+
+      //handle retransmission,avoid duplicate
+      if(command=="12")
+	{
+	  string sqlStatementOrderNumberCount="SELECT count(*) FROM demoOrder where Order_number='"+orderNumber+"'";
+	  if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementOrderNumberCount,conn,true)) return;
+	  MysqlRes resultOrderNumberCount(&LocalMysqlConnection::instance());
+	  if(resultOrderNumberCount.isValid())
+	    {
+	      MYSQL_ROW rowCnt=resultOrderNumberCount.fetchRow();
+	      int orderNumberCnt=stoi(string(rowCnt[0]));
+	      if(orderNumberCnt>0)
+		{
+		  //duplicate found
+		   conn->send(consumingMsgRet);
+                   if(mysqlQueryWrap(&LocalMysqlConnection::instance(),"COMMIT",conn,false)) return;
+		   return;//no need for continue
+		}
+	    }
+	}
 
       string sqlStatementDAClients="SELECT DAClientID FROM demoDAClients where Company_code="+companyIDStr+" AND Isnew=0";
       if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementDAClients,conn,true)) return;
@@ -459,7 +479,8 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
 	  if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementCache,conn,true)) return;
 	}
 
-      if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementConsumation,conn,true)) return;
+      if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementConsumation,conn,true))return;
+
 	
       string orderIDStr=to_string(mysql_insert_id(&LocalMysqlConnection::instance()));
       string sqlStatementOrderitem="insert into demoOrderitem(OrderID,Name,Number) values";
@@ -493,7 +514,7 @@ void DemoServer::processStringMessage(const TcpConnectionPtr& conn,const vector<
 	  if(mysqlQueryWrap(&LocalMysqlConnection::instance(),sqlStatementOrderitem,conn,true)) return;
 	}
       
-      string consumingMsgRet=setupMessage(orderNumber,"02");
+      
       conn->send(consumingMsgRet);
       if(mysqlQueryWrap(&LocalMysqlConnection::instance(),"COMMIT",conn,false)) return;
     }
